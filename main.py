@@ -26,6 +26,13 @@ BROWN = (107, 72, 44)
 WHITE = (245, 245, 235)
 GOLD = (244, 196, 70)
 
+DEER_COUNT = 8
+DEER_SPEED = 1.0
+DEER_WANDER_MIN = 45
+DEER_WANDER_MAX = 150
+DEER_COLOR = (165, 112, 72)
+DEER_COLOR_DARK = (95, 62, 40)
+
 random.seed(12)
 
 #note to self: 0 = grass, 1 = trail, 2 = water, 3 = tree
@@ -144,6 +151,124 @@ def get_camera():
     camera_y = max(0, min(camera_y, WORLD_H * TILE - SCREEN_H))
 
     return camera_x, camera_y
+
+def create_deer():
+    for attempt in range(500):
+        tile_x = random.randint(0, WORLD_W - 1)
+        tile_y = random.randint(0, WORLD_H - 1)
+
+        if world[tile_y][tile_x] not in (0, 1):
+            continue
+
+        x = tile_x * TILE + TILE // 2
+        y = tile_y * TILE + TILE // 2
+
+        deer_rect = pygame.Rect(x - 8, y - 8, 16, 16)
+
+        if collides_with_obstacle(deer_rect):
+            continue
+        if deer_rect.colliderect(player):
+            continue
+
+        return {
+            "x": float(x),
+            "y": float(y),
+            "direction_x": 0.0,
+            "direction_y": 0.0,
+            "timer": random.randint(DEER_WANDER_MIN, DEER_WANDER_MAX),
+            "speed": DEER_SPEED
+        }
+
+    return None
+
+def create_wildlife():
+    deer_list = []
+
+    for _ in range(DEER_COUNT):
+        deer = create_deer()
+
+        if deer is not None:
+            deer_list.append(deer)
+
+    return deer_list
+
+def update_wildlife(deer_list):
+    for deer in deer_list:
+        deer["timer"] -= 1
+
+        if deer["timer"] <= 0:
+            angle = random.uniform(0, math.tau)
+
+            deer["direction_x"] = math.cos(angle)
+            deer["direction_y"] = math.sin(angle)
+
+            deer["timer"] = random.randint(DEER_WANDER_MIN, DEER_WANDER_MAX)
+
+        dx = deer["direction_x"] * deer["speed"]
+        dy = deer["direction_y"] * deer["speed"]
+
+        test_rect = pygame.Rect(
+            int(deer["x"] - 8 + dx),
+            int(deer["y"] - 8),
+            16, 16
+        )
+
+        if (
+            0 <= deer["x"] + dx < WORLD_W * TILE
+            and not collides_with_obstacle(test_rect)
+        ):
+            deer["x"] += dx
+
+        else:
+            deer["direction_x"] *= -1
+
+        test_rect = pygame.Rect(
+            int(deer["x"] - 8),
+            int(deer["y"] - 8 + dy),
+            16, 16
+        )
+
+        if (
+            0 <= deer["y"] + dy < WORLD_H * TILE
+            and not collides_with_obstacle(test_rec)
+        ):
+            deer["y"] += dy
+
+        else:
+            deer["direction_y"] *= -1
+
+def draw_wildlife(deer_list, camera_x, camera_y):
+    for deer in deer_list:
+        screen_x = int(deer["x"] - camera_x)
+        screen_y = int(deer["y"] - camera_y)
+
+        if not (
+            -20 <= screen_x <= SCREEN_W + 20
+            and -20 <= screen_y <= SCREEN_H + 20
+        ):
+            continue
+
+        pygame.draw.ellipse(
+            screen,
+            DEER_COLOR,
+            (screen_x - 8, screen_y - 5, 16, 10)
+        )
+
+        pygame.draw.circle(
+            screen,
+            DEER_COLOR,
+            (screen_x + 7, screen_y - 4),
+            4
+        )
+
+        for leg_x in (-5, 3):
+            pygame.draw.line(
+                screen,
+                DEER_DARK_COLOR,
+                (screen_x + leg_x, screen_y + 3),
+                (screen_x + leg_x, screen_y + 7),
+                2
+            )
 
 running = True
 
