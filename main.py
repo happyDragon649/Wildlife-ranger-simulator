@@ -31,7 +31,7 @@ DEER_SPEED = 1.0
 DEER_WANDER_MIN = 45
 DEER_WANDER_MAX = 150
 DEER_COLOR = (165, 112, 72)
-DEER_COLOR_DARK = (95, 62, 40)
+DEER_DARK_COLOR = (95, 62, 40)
 
 random.seed(12)
 
@@ -230,7 +230,7 @@ def update_wildlife(deer_list):
 
         if (
             0 <= deer["y"] + dy < WORLD_H * TILE
-            and not collides_with_obstacle(test_rec)
+            and not collides_with_obstacle(test_rect)
         ):
             deer["y"] += dy
 
@@ -269,6 +269,8 @@ def draw_wildlife(deer_list, camera_x, camera_y):
                 (screen_x + leg_x, screen_y + 7),
                 2
             )
+
+deer_list = create_wildlife()
 
 running = True
 
@@ -309,9 +311,13 @@ while running:
     if collides_with_obstacle(player):
         player.y -= round(move_y)
 
+    update_wildlife(deer_list)
+
     camera_x, camera_y = get_camera()
 
     draw_world(camera_x, camera_y)
+
+    draw_wildlife(deer_list, camera_x, camera_y)
 
     ranger_rect = pygame.Rect(player.x - camera_x, player.y - camera_y, player.width, player.height)
 
