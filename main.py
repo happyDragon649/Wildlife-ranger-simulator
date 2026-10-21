@@ -416,7 +416,7 @@ while running:
         screen.blit(message_surface, (25, 96))
 
     controls = small_font.render(
-        "WASD/Arrows: Move   |   ESC: Quit",
+        "WASD/Arrows: Move   |   E: observe deer   |   ESC: Quit",
         True, WHITE
     )
 
