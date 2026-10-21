@@ -32,6 +32,9 @@ DEER_WANDER_MIN = 45
 DEER_WANDER_MAX = 150
 DEER_COLOR = (165, 112, 72)
 DEER_DARK_COLOR = (95, 62, 40)
+OBSERVATION_RANGE = 140
+OBSERVATION_REWARD = 5
+observation_message = ""
 
 random.seed(12)
 
@@ -176,7 +179,8 @@ def create_deer():
             "direction_x": 0.0,
             "direction_y": 0.0,
             "timer": random.randint(DEER_WANDER_MIN, DEER_WANDER_MAX),
-            "speed": DEER_SPEED
+            "speed": DEER_SPEED,
+            "observed": False
         }
 
     return None
@@ -216,6 +220,7 @@ def update_wildlife(deer_list):
         if (
             0 <= deer["x"] + dx < WORLD_W * TILE
             and not collides_with_obstacle(test_rect)
+            and not test_rect.colliderect(player)
         ):
             deer["x"] += dx
 
@@ -231,6 +236,7 @@ def update_wildlife(deer_list):
         if (
             0 <= deer["y"] + dy < WORLD_H * TILE
             and not collides_with_obstacle(test_rect)
+            and not test_rect.colliderect(player)
         ):
             deer["y"] += dy
 
@@ -270,6 +276,41 @@ def draw_wildlife(deer_list, camera_x, camera_y):
                 2
             )
 
+def observe_nearest_deer():
+    global funding_coins, observation_message
+
+    nearest_deer = None
+    nearest_distance = float("inf")
+
+    for deer in deer_list:
+        distance = math.hypot(
+            player.centerx - deer["x"],
+            player.centery - deer["y"]
+        )
+
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_deer = deer
+
+    if nearest_deer is None:
+        observation_message = "No deer exist here!"
+        return
+
+    if nearest_distance > OBSERVATION_RANGE:
+        observation_message = "Too far away! Get closer to the deer!"
+        return
+
+    if nearest_deer["observed"]:
+        observation_message = "You already observed this deer!"
+        return
+
+    nearest_deer["observed"] = True
+    funding_coins += OBSERVATION_REWARD
+
+    observation_message = (
+        f"SUCCESS! + {OBSERVATION_REWARD} funding coins!"
+    )
+
 deer_list = create_wildlife()
 
 running = True
@@ -280,6 +321,10 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_e:
+                observe_nearest_deer()
 
     keys = pygame.key.get_pressed()
 
@@ -341,12 +386,12 @@ while running:
 
     pygame.draw.rect(
         screen, (28, 48, 38),
-        (12, 12, 285, 91), border_radius = 10
+        (12, 12, 285, 120), border_radius = 10
     )
 
     pygame.draw.rect(
         screen, (110, 150, 105),
-        (12, 12, 285, 91), 2, border_radius = 10
+        (12, 12, 285, 120), 2, border_radius = 10
     )
 
     screen.blit(font.render("PARK RANGER SIMULATOR", True, WHITE), (25, 20))
@@ -365,6 +410,10 @@ while running:
         ),
         (25, 72)
     )
+
+    if observation_message:
+        message_surface = small_font.render(observation_message, True, GOLD)
+        screen.blit(message_surface, (25, 96))
 
     controls = small_font.render(
         "WASD/Arrows: Move   |   ESC: Quit",
