@@ -89,6 +89,22 @@ player = pygame.Rect(START_X * TILE + 5, START_Y * TILE + 5, 22, 22)
 PLAYER_SPEED = 190
 funding_coins = 0
 
+MISSION_DEER_TARGET = 3
+MISSION_BONUS = 15
+mission_completed = False
+
+LOG_COUNT = 6
+LOG_CLEAR_RANGE = 65
+LOG_REWARD = 8
+logs_cleared = 0
+
+SPEED_BOOTS_COST = 25
+BINOCULARS_COST = 20
+
+speed_boots_bought = False
+better_binoculars_bought = False
+shop_open = False
+
 def collides_with_obstacle(rect):
     left = max(0, rect.left // TILE)
     right = min(WORLD_W - 1, rect.right // TILE)
@@ -196,6 +212,66 @@ def create_wildlife():
 
     return deer_list
 
+def create_fallen_logs():
+    logs = []
+    trail_tiles = []
+
+    for y in range(WORLD_H):
+        for x in range(WORLD_W):
+            if world[y][x] == 1:
+                trail_tiles.append((x, y))
+
+    random.shuffle(trail_tiles)
+
+    for tile_x, tile_y in trail_tiles:
+        if len(logs) >= LOG_COUNT:
+            break
+
+        log_x = tile_x * TILE + TILE // 2
+        log_y = tile_y * TILE + TILE // 2
+
+        if math.hypot(
+            player.centerx - log_x,
+            player.centery - log_y,
+        ) < 180:
+            continue
+
+        logs.append({
+            "x": log_x,
+            "y": log_y
+        })
+
+    return logs
+
+def draw_fallen_logs(logs, camera_x, camera_y):
+    for log in logs:
+        x = int(log["x"] - camera_x)
+        y = int(log["y"] - camera_y)
+
+        if not (
+            -30 <= x <= SCREEN_W + 30
+            and -30 <= y <= SCREEN_H + 30
+        ):
+            continue
+
+        pygame.draw.rect(
+            screen, (105, 65, 35),
+            (x - 12, y - 5, 24, 10),
+            border_radius = 3
+        )
+
+        #lighter wood stripe
+        pygame.draw.line(
+            screen, (180, 130, 75),
+            (x - 7, y - 2),
+            (x + 7, y - 2), 2
+        )
+
+        pygame.draw.circle(
+            screen, (205, 164, 105),
+            (x + 10, y), 4
+        )
+
 def update_wildlife(deer_list):
     for deer in deer_list:
         deer["timer"] -= 1
@@ -277,12 +353,15 @@ def draw_wildlife(deer_list, camera_x, camera_y):
             )
 
 def observe_nearest_deer():
-    global funding_coins, observation_message
+    global funding_coins, observation_message, mission_completed
 
     nearest_deer = None
     nearest_distance = float("inf")
 
     for deer in deer_list:
+        if deer["observed"]:
+            continue
+
         distance = math.hypot(
             player.centerx - deer["x"],
             player.centery - deer["y"]
@@ -293,25 +372,147 @@ def observe_nearest_deer():
             nearest_deer = deer
 
     if nearest_deer is None:
-        observation_message = "No deer exist here!"
+        observation_message = "All deer have been observed!"
         return
 
     if nearest_distance > OBSERVATION_RANGE:
-        observation_message = "Too far away! Get closer to the deer!"
-        return
-
-    if nearest_deer["observed"]:
-        observation_message = "You already observed this deer!"
+        observation_message = "Too far away! Get closer to the deer."
         return
 
     nearest_deer["observed"] = True
     funding_coins += OBSERVATION_REWARD
 
-    observation_message = (
-        f"SUCCESS! + {OBSERVATION_REWARD} funding coins!"
-    )
+    observed_count = sum(1 for deer in deer_list if deer["observed"])
+
+    if (
+        observed_count >= MISSION_DEER_TARGET
+        and not mission_completed
+    ):
+        mission_completed = True
+        funding_coins += MISSION_BONUS
+        observation_message = (
+            f"Observing deer mission complete! +{MISSION_BONUS} bonus coins!"
+        )
+
+    else:
+        observation_message = (
+            f"Deer observed! +{OBSERVATION_REWARD} coins!"
+        )
+
+def clear_nearby_log():
+    global funding_coins, logs_cleared, observation_message
+
+    nearest_log = None
+    nearest_distance = float("inf")
+
+    for log in fallen_logs:
+        distance = math.hypot(
+            player.centerx - log["x"],
+            player.centery - log["y"]
+        )
+
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_log = log
+
+    if nearest_log is None or nearest_distance > LOG_CLEAR_RANGE:
+        return False
+
+    fallen_logs.remove(nearest_log)
+    logs_cleared += 1
+    funding_coins += LOG_REWARD
+
+    observation_message = f"Trail cleared! +{LOG_REWARD} coins!"
+    return True
+
+def handle_interaction():
+    if clear_nearby_log():
+        return
+
+    if mission_completed and logs_cleared >= LOG_COUNT:
+        global observation_message
+        observation_message = "All current tasks completed!"
+        return
+
+    observe_nearest_deer()
+
+def handle_shop_key(key):
+    global shop_open
+    global funding_coins, PLAYER_SPEED, OBSERVATION_RANGE
+    global speed_boots_bought, better_binoculars_bought
+    global observation_message
+
+    if key == pygame.K_b:
+        shop_open = not shop_open
+
+        if shop_open:
+            observation_message = "Supply shop opened!"
+        else:
+            observation_message = "Supply shop closed!"
+
+        return
+
+    if not shop_open:
+        return
+
+    if key == pygame.K_1:
+        if speed_boots_bought:
+            observation_message = "You already have this item"
+        elif funding_coins < SPEED_BOOTS_COST:
+            observation_message = "Not enough coins!"
+        else:
+            funding_coins -= SPEED_BOOTS_COST
+            PLAYER_SPEED += 50
+            speed_boots_bought = True
+            observation_message = "Speed boots purchased!"
+
+    elif key == pygame.K_2:
+        if better_binoculars_bought:
+            observation_message = "You already have this item"
+        elif funding_coins < BINOCULARS_COST:
+            observation_message = "Not enough coins!"
+        else:
+            funding_coins -= BINOCULARS_COST
+            OBSERVATION_RANGE += 50
+            better_binoculars_bought = True
+            observation_message = "Better binoculars purchased!"
+
+def draw_shop():
+    if not shop_open:
+        return
+
+    shop_rect = pygame.Rect(260, 170, 440, 270)
+
+    pygame.draw.rect(screen, (35, 43, 38), shop_rect, border_radius = 12)
+    pygame.draw.rect(screen, (220, 190, 105), shop_rect, 3, border_radius = 12)
+
+    shop_lines = [
+        ("Supply Shop", 30, (244, 196, 70)),
+        (f"Your funding: {funding_coins} coins", 68, (255, 255, 255)),
+        (
+            "1. Speed Boots: 25 coins"
+            + (" [OWNED]" if speed_boots_bought else ""),
+            115,
+            (255, 255, 255)
+        ),
+        (
+            "2. Better Binoculars: 20 coins"
+            + (" [OWNED]" if better_binoculars_bought else ""),
+            155,
+            (255, 255, 255)
+        ),
+        ("Press 1 or 2 to buy", 205, (210, 220, 210)),
+        ("Press B to close", 235, (210, 220, 210))
+    ]
+
+    for message, y, color in shop_lines:
+        text_surface = font.render(message, True, color)
+        text_rect = text_surface.get_rect(center = (shop_rect.centerx, shop_rect.y + y))
+        screen.blit(text_surface, text_rect)
 
 deer_list = create_wildlife()
+
+fallen_logs = create_fallen_logs()
 
 running = True
 
@@ -323,8 +524,14 @@ while running:
             running = False
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_e:
-                observe_nearest_deer()
+            if event.key == pygame.K_b:
+                handle_shop_key(event.key)
+
+            elif shop_open:
+                handle_shop_key(event.key)
+
+            elif event.key == pygame.K_e:
+                handle_interaction()
 
     keys = pygame.key.get_pressed()
 
@@ -362,6 +569,8 @@ while running:
 
     draw_world(camera_x, camera_y)
 
+    draw_fallen_logs(fallen_logs, camera_x, camera_y)
+
     draw_wildlife(deer_list, camera_x, camera_y)
 
     ranger_rect = pygame.Rect(player.x - camera_x, player.y - camera_y, player.width, player.height)
@@ -386,12 +595,12 @@ while running:
 
     pygame.draw.rect(
         screen, (28, 48, 38),
-        (12, 12, 285, 120), border_radius = 10
+        (12, 12, 285, 165), border_radius = 10
     )
 
     pygame.draw.rect(
         screen, (110, 150, 105),
-        (12, 12, 285, 120), 2, border_radius = 10
+        (12, 12, 285, 165), 2, border_radius = 10
     )
 
     screen.blit(font.render("PARK RANGER SIMULATOR", True, WHITE), (25, 20))
@@ -411,12 +620,35 @@ while running:
         (25, 72)
     )
 
+    observed_count = sum(1 for deer in deer_list if deer["observed"])
+
+    if mission_completed:
+        mission_text = "Mission: COMPLETE"
+    
+    else:
+        mission_text = (
+            f"Mission: Observe deer "
+            f"{observed_count}/{MISSION_DEER_TARGET}"
+        )
+
+    screen.blit(
+        small_font.render(mission_text, True, GOLD),
+        (25, 92)
+    )
+
+    log_text = f"Logs cleared: {logs_cleared}/{LOG_COUNT}"
+
+    screen.blit(
+        small_font.render(log_text, True, WHITE),
+        (25, 114)
+    )
+
     if observation_message:
         message_surface = small_font.render(observation_message, True, GOLD)
-        screen.blit(message_surface, (25, 96))
+        screen.blit(message_surface, (25, 136))
 
     controls = small_font.render(
-        "WASD/Arrows: Move   |   E: observe deer   |   ESC: Quit",
+        "WASD/Arrows: Move  |  E: Observe deer  |  B: Open shop  |ESC: Quit",
         True, WHITE
     )
 
@@ -427,6 +659,8 @@ while running:
     )
 
     screen.blit(controls, (22, SCREEN_H - 33))
+
+    draw_shop()
 
     pygame.display.flip()
 
